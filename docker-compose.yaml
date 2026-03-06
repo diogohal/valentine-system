@@ -93,4 +93,4 @@ services:
     command: "postgres -c max_connections=100 -c shared_buffers=128MB"
     shm_size: 128M
     ports:
-      - "5432:5432"
+      - "5433:5432"
