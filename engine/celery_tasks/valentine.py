@@ -19,6 +19,29 @@ from engine.utils.valentine_plots import ValentinePlots
 from engine.data_sources.valentine import metrics as valentine_metric_functions
 
 
+def create_normalized_valentine_matches(valentine_matches: dict) -> dict:
+    """Normalize valentine matches to a dict keyed by source column.
+
+    Each source column maps to a list of target columns ordered by similarity (desc).
+
+    Example:
+        {('source','A'),('target','A'): 0.95,
+         ('source','A'),('target','B'): 0.90}
+        -> {'A': ['A', 'B']}
+    """
+    normalized = {}
+    for (src, tgt), sim in valentine_matches.items():
+        source_col = src[1]
+        target_col = tgt[1]
+        normalized.setdefault(source_col, []).append((sim, target_col))
+
+    for source_col, tgt_list in normalized.items():
+        tgt_list.sort(key=lambda x: x[0], reverse=True)
+        normalized[source_col] = [t for _, t in tgt_list]
+
+    return normalized
+
+
 @celery.task
 def create_fabricated_data(file_name: str,
                            json_schema: dict,
@@ -116,6 +139,9 @@ def run_single_benchmark_task(dataset_name: str,
     valentine_matches = {(('source', match['source']['clm_nm']),
                           ('target', match['target']['clm_nm'])): match['sim'] for match in matches}
     valentine_matches = dict(sorted(valentine_matches.items(), key=lambda item: item[1], reverse=True))
+
+    normalized_valentine_matches = create_normalized_valentine_matches(valentine_matches)
+
     for metric in metric_fns:
         if metric.__name__ != "precision_at_n_percent":
             if metric.__name__ in ['precision', 'recall', 'f1_score'] and matching_algorithm != "Coma":
@@ -132,6 +158,7 @@ def run_single_benchmark_task(dataset_name: str,
     output = {"name": name,
               "dataset_pair_name": dataset_name,
               "matches": valentine_matches,
+              "normalized_matches": normalized_valentine_matches,
               "metrics": final_metrics,
               "run_times": run_times}
     safe_dataset_name = re.sub('\\W+', '_', str(name))
