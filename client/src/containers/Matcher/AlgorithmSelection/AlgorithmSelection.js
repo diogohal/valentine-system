@@ -177,6 +177,55 @@ class AlgorithmSelection extends Component {
                 show: false
             }
         },
+        goodnessOfFitParams: {
+            defaultAlgoParams: {
+                name:"Default Params",
+                elementType: "checkbox",
+                elementConfig:{
+                    type: "checkbox",
+                    defaultChecked: true,
+                    name: "Default Parameters"
+                },
+                value: true,
+                show: true
+             },
+            GoodnessOfFit_top_ranking: {
+                name: "top_ranking",
+                elementType: "range",
+                elementConfig : {
+                    min: 1,
+                    max: 100,
+                    step: 1,
+                    defaultValue: 10
+                },
+                value: 10,
+                show: false
+            },
+            GoodnessOfFit_continuous_threshold: {
+                name: "continuous_threshold",
+                elementType: "range",
+                elementConfig : {
+                    min: 0,
+                    max: 255,
+                    step: 1,
+                    defaultValue: 127
+                },
+                value: 127,
+                show: false
+            },
+            GoodnessOfFit_p_value_threshold: {
+                name: "p_value_threshold",
+                elementType: "range",
+                elementConfig : {
+                    min: 0.0,
+                    max: 1.0,
+                    step: 0.01,
+                    defaultValue: 0.95
+                },
+                value: 0.95,
+                show: false
+            }
+        },
         jaccardLevenParams: {
             defaultAlgoParams: {
                 name:"Default Params",
@@ -220,6 +269,7 @@ class AlgorithmSelection extends Component {
             "Cupid": {},
             "SimilarityFlooding": {},
             "CorrelationClustering": {},
+            "GoodnessOfFit": {top_ranking: 10, continuous_threshold: 127, p_value_threshold: 0.95},
             "JaccardLevenMatcher": {},
             "EmbDI": {}
         },
@@ -228,6 +278,7 @@ class AlgorithmSelection extends Component {
             "Cupid": false,
             "SimilarityFlooding": false,
             "CorrelationClustering": false,
+            "GoodnessOfFit": false,
             "JaccardLevenMatcher": false,
             "EmbDI": false
         }
@@ -285,6 +336,12 @@ class AlgorithmSelection extends Component {
                     <Algorithm algoName={"Distribution Based"} params={this.state.distributionBasedParams}
                                sendSelected={(val) => this.getSelectedAlgorithms(val, "CorrelationClustering")}
                                toggleAlgorithm={(selected) => this.toggleAlgorithmSelection(selected, "CorrelationClustering")}
+                    />
+                </div>
+                <div className={classes.Algorithm}>
+                    <Algorithm algoName={"Goodness-of-Fit"} params={this.state.goodnessOfFitParams}
+                               sendSelected={(val) => this.getSelectedAlgorithms(val, "GoodnessOfFit")}
+                               toggleAlgorithm={(selected) => this.toggleAlgorithmSelection(selected, "GoodnessOfFit")}
                     />
                 </div>
                 <div className={classes.Algorithm}>

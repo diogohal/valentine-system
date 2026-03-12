@@ -231,11 +231,4 @@ def get_spurious_results_at_sizeof_ground_truth(matches: dict, golden_standard: 
     for detected_match in matches_at_sizeof_ground_truth:
         if detected_match not in golden_standard.expected_matches:
             spurious_results.append(create_spurious_result_dict(detected_match, matches, 'False Positive'))
-    
-    print('---------------------------------------------------------------------------')
-    print('spurious_results', spurious_results)
-    print('matches_at_sizeof_ground_truth', matches_at_sizeof_ground_truth)
-    print('golden_standard.expected_matches', golden_standard.expected_matches)
-    print('matches', matches)
-    print('---------------------------------------------------------------------------')
     return spurious_results

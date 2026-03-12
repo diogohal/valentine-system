@@ -4,7 +4,7 @@ wheel==0.37.1
 bitarray==2.6.0
 # Algorithms
 numpy==1.23.3
-scipy==1.9.1
+scipy==1.13.1
 pandas==1.5.0
 nltk==3.6.7
 snakecase==1.0.1
