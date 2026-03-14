@@ -96,7 +96,36 @@ class GoodnessOfFit(BaseMatcher):
         
         print("-------------------------------------------------------------------")
 
-        return results
+        return self._to_valentine_matches(filtered_results, t1, t2)
+
+    def _to_valentine_matches(self, results, t1, t2):
+        """Convert internal result rows to Valentine match dicts."""
+        valentine_matches = []
+        for result in results:
+            col1 = result[2]
+            col2 = result[3]
+            pvalue = float(result[6])
+
+            valentine_matches.append({
+                "source": {
+                    "db_guid": self.source_guid,
+                    "tbl_nm": t1.name,
+                    "tbl_guid": t1.unique_identifier,
+                    "clm_nm": col1,
+                    "clm_guid": t1.get_guid_column_lookup.get(col1)
+                },
+                "target": {
+                    "db_guid": self.target_guid,
+                    "tbl_nm": t2.name,
+                    "tbl_guid": t2.unique_identifier,
+                    "clm_nm": col2,
+                    "clm_guid": t2.get_guid_column_lookup.get(col2)
+                },
+                "sim": pvalue
+            })
+
+        print(f"valentine_matches: {valentine_matches}")
+        return valentine_matches
     
     def attr_cart_product(self, base_cols, base_data, new_cols, new_data, dist1, dist2, delimiter=127, hist_bin=10):
         results = []
@@ -153,7 +182,8 @@ class GoodnessOfFit(BaseMatcher):
         filtered_results = []
         for key, group in grouped.items():
             best_result = max(group, key=lambda x: x[6])  # x[6] is the p-value
-            filtered_results.append(best_result)
+            if best_result[6] >= self.p_value_threshold:
+                filtered_results.append(best_result) # Only keep if p-value meets threshold
 
         return filtered_results
     
