@@ -9,6 +9,11 @@ It does not implement any real matching logic yet.
 from typing import List, Dict, Union
 import uuid
 import numpy as np
+from multiprocessing import shared_memory
+import os
+import pandas as pd
+import multiprocessing as mp
+import math
 
 from ..base_matcher import BaseMatcher
 from ...data_sources.base_db import BaseDB
@@ -80,7 +85,7 @@ class GoodnessOfFit(BaseMatcher):
         except Exception:
             print(f"Error converting columns to numpy arrays. Skipping matching.")
             return results
-        interim = self.attr_cart_product(
+        interim = self.parallel_cart_prod(
             base_cols, base_data, new_cols, new_data,
             t1.name, t2.name,
             delimiter=self.continuous_threshold
@@ -96,9 +101,9 @@ class GoodnessOfFit(BaseMatcher):
         
         print("-------------------------------------------------------------------")
 
-        return self._to_valentine_matches(filtered_results, t1, t2)
+        return self.to_valentine_matches(filtered_results, t1, t2)
 
-    def _to_valentine_matches(self, results, t1, t2):
+    def to_valentine_matches(self, results, t1, t2):
         """Convert internal result rows to Valentine match dicts."""
         valentine_matches = []
         for result in results:
@@ -203,3 +208,111 @@ class GoodnessOfFit(BaseMatcher):
             truncated_results.extend(sorted_group[:self.top_ranking])  # Keep top N
 
         return truncated_results
+
+
+    # ---------- Parallel matching functions ----------
+    @staticmethod
+    def worker_compare(base_cols, shm_base, new_cols, shm_new, dtype_base, dtype_new, 
+                    base_shape, new_shape, start, stop, dist1, dist2, 
+                    delimiter=127, hist_bin=10, result_list=None):
+
+        base_arr = np.ndarray(base_shape, dtype=dtype_base, buffer=shm_base.buf)
+        new_arr = np.ndarray(new_shape, dtype=dtype_new, buffer=shm_new.buf)
+
+        results = []
+
+        for i in range(start, stop):
+            for j in range(len(new_cols)):
+                col1 = base_cols[i]
+                col2 = new_cols[j]
+
+                # Avoiding dtype string columns
+                try:
+                    data1 = base_arr[:, i].astype(float)
+                    data2 = new_arr[:, j].astype(float)
+                except ValueError:
+                    # Skip comparison if the column cannot be cast to float
+                    continue
+
+                nuniq1 = len(set(data1))
+                nuniq2 = len(set(data2))
+
+                if nuniq1 < 2:
+                    break
+                elif nuniq2 < 2:
+                    continue
+
+                # Check the threshold
+                if nuniq1 <= delimiter and nuniq2 <= delimiter:
+                    uniq1 = set(data1)
+                    uniq2 = set(data2)
+
+                    if len(uniq1.intersection(uniq2)) < 2:
+                        continue
+                    res = chisq_test(data1, data2)
+                    results.append([dist1, dist2, col1, col2, 'CHISQ', res.statistic, res.pvalue])
+                    res = g_test(data1, data2)
+                    results.append([dist1, dist2, col1, col2, 'G', res.statistic, res.pvalue])
+
+                elif nuniq1 > delimiter and nuniq2 > delimiter:
+                    res = ks_test(data1, data2, hist_bin)
+                    results.append([dist1, dist2, col1, col2, 'KS', res.statistic, res.pvalue])
+                    res = ad_test(data1, data2, hist_bin)
+                    results.append([dist1, dist2, col1, col2, 'AD', res.statistic, res.pvalue])
+
+        if result_list is not None:
+            result_list.extend(results)
+
+
+    @staticmethod
+    def parallel_cart_prod(base_cols, base_data, new_cols, new_data,
+                        dist1, dist2, delimiter=127, hist_bin=10, num_workers=None):
+        # Celery worker processes are daemonized, so they cannot spawn child processes.
+        # Fall back to the sequential version when running in a daemon.
+        if mp.current_process().daemon:
+            print("[parallel_cart_prod] Running sequential fallback because current process is daemonic.")
+            return GoodnessOfFit().attr_cart_product(base_cols, base_data, new_cols, new_data, dist1, dist2, delimiter, hist_bin)
+
+        if num_workers is None:
+            num_workers = max(1, mp.cpu_count() - 4)
+
+        print(f"== Delimiter: {delimiter},  Bin: {hist_bin}")
+
+        # Start and copy input shared memory
+        shm_base = shared_memory.SharedMemory(create=True, size=base_data.nbytes)
+        shm_new = shared_memory.SharedMemory(create=True, size=new_data.nbytes)
+        base_sh = np.ndarray(base_data.shape, dtype=base_data.dtype, buffer=shm_base.buf)
+        new_sh = np.ndarray(new_data.shape, dtype=new_data.dtype, buffer=shm_new.buf)
+        base_sh[:] = base_data[:]
+        new_sh[:] = new_data[:]
+
+        # Divide base_data in chunks for each process
+        n = len(base_cols)
+        chunk = math.ceil(n / num_workers)
+
+        manager = mp.Manager()
+        result_list = manager.list()
+
+        processes = []
+        for id in range(num_workers):
+            start = id * chunk
+            if start >= n:
+                break
+            stop = min((id+1) * chunk, n)
+            p = mp.Process(target=GoodnessOfFit.worker_compare,
+                        args=(base_cols, shm_base, new_cols, shm_new, base_data.dtype, 
+                                new_data.dtype, base_data.shape, new_data.shape, 
+                                start, stop, dist1, dist2, delimiter, hist_bin, result_list))
+            p.start()
+            processes.append(p)
+
+        for p in processes:
+            p.join()
+
+        # Cleanup shared memory
+        shm_base.close()
+        shm_base.unlink()
+        shm_new.close()
+        shm_new.unlink()
+
+        return list(result_list)
