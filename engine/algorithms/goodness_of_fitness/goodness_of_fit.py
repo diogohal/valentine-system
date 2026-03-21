@@ -110,6 +110,7 @@ class GoodnessOfFit(BaseMatcher):
             col1 = result[2]
             col2 = result[3]
             pvalue = float(result[6])
+            test = result[4]
 
             valentine_matches.append({
                 "source": {
@@ -126,10 +127,10 @@ class GoodnessOfFit(BaseMatcher):
                     "clm_nm": col2,
                     "clm_guid": t2.get_guid_column_lookup.get(col2)
                 },
-                "sim": pvalue
+                "sim": pvalue,
+                "test": test
             })
 
-        print(f"valentine_matches: {valentine_matches}")
         return valentine_matches
     
     def attr_cart_product(self, base_cols, base_data, new_cols, new_data, dist1, dist2, delimiter=127, hist_bin=10):
@@ -183,29 +184,48 @@ class GoodnessOfFit(BaseMatcher):
                 grouped[key] = []
             grouped[key].append(result)
 
-        # For each group, keep only the test with the highest p-value
+        # Keep all results in a pair if any test in that pair exceeds the threshold.
         filtered_results = []
         for key, group in grouped.items():
-            best_result = max(group, key=lambda x: x[6])  # x[6] is the p-value
-            if best_result[6] >= self.p_value_threshold:
-                filtered_results.append(best_result) # Only keep if p-value meets threshold
+            if any(r[6] >= self.p_value_threshold for r in group):
+                filtered_results.extend(group)
 
         return filtered_results
     
     def truncateResultsForEachColumn(self, results):
-        # Group results by col1
-        grouped = {}
+        # Group by col1
+        grouped_by_col1 = {}
         for result in results:
-            key = result[2]  # col1
-            if key not in grouped:
-                grouped[key] = []
-            grouped[key].append(result)
+            col1 = result[2]
+            if col1 not in grouped_by_col1:
+                grouped_by_col1[col1] = []
+            grouped_by_col1[col1].append(result)
 
-        # For each group, keep only the top N results based on p-value
         truncated_results = []
-        for key, group in grouped.items():
-            sorted_group = sorted(group, key=lambda x: x[6], reverse=True)  # Sort by p-value
-            truncated_results.extend(sorted_group[:self.top_ranking])  # Keep top N
+        for col1, col1_results in grouped_by_col1.items():
+            # For this col1, group by (col1, col2)
+            grouped_pairs = {}
+            for result in col1_results:
+                key = (result[2], result[3])  # (col1, col2)
+                if key not in grouped_pairs:
+                    grouped_pairs[key] = []
+                grouped_pairs[key].append(result)
+
+            # For each pair, get max p-value
+            pair_max_p = []
+            for key, group in grouped_pairs.items():
+                max_p = max(r[6] for r in group)
+                pair_max_p.append((key, max_p, group))
+
+            # Sort by max p-value descending
+            pair_max_p.sort(key=lambda x: x[1], reverse=True)
+
+            # Take top_ranking
+            top_pairs = pair_max_p[:self.top_ranking]
+
+            # Add all results from top pairs
+            for key, max_p, group in top_pairs:
+                truncated_results.extend(group)
 
         return truncated_results
 

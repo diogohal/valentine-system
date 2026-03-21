@@ -22,22 +22,42 @@ from engine.data_sources.valentine import metrics as valentine_metric_functions
 def create_normalized_valentine_matches(valentine_matches: dict) -> dict:
     """Normalize valentine matches to a dict keyed by source column.
 
-    Each source column maps to a list of target columns ordered by similarity (desc).
+    Supports two input forms:
+      - simple float similarity values (old behavior).
+      - dict of tests per pair (GoodnessOfFit): {'KS': 0.99, 'AD': 0.95}.
 
-    Example:
+    Example old form:
         {('source','A'),('target','A'): 0.95,
          ('source','A'),('target','B'): 0.90}
         -> {'A': ['A', 'B']}
+
+    Example GOF form:
+        {('source','A'),('target','A'): {'KS': 0.99, 'AD': 0.95}}
+        -> {'A': {'A': {'KS': 0.99, 'AD': 0.95}}}
     """
     normalized = {}
-    for (src, tgt), sim in valentine_matches.items():
-        source_col = src[1]
-        target_col = tgt[1]
-        normalized.setdefault(source_col, []).append((sim, target_col))
+    any_dict_values = any(isinstance(v, dict) for v in valentine_matches.values())
 
-    for source_col, tgt_list in normalized.items():
-        tgt_list.sort(key=lambda x: x[0], reverse=True)
-        normalized[source_col] = [t for _, t in tgt_list]
+    if any_dict_values:
+        tmp = {}
+        for (src, tgt), tests in valentine_matches.items():
+            source_col = src[1]
+            target_col = tgt[1]
+            max_score = max(tests.values()) if tests else 0
+            tmp.setdefault(source_col, []).append((max_score, target_col, tests))
+
+        for source_col, items in tmp.items():
+            items.sort(key=lambda x: x[0], reverse=True)
+            normalized[source_col] = {target_col: tests for _, target_col, tests in items}
+    else:
+        for (src, tgt), sim in valentine_matches.items():
+            source_col = src[1]
+            target_col = tgt[1]
+            normalized.setdefault(source_col, []).append((sim, target_col))
+
+        for source_col, tgt_list in normalized.items():
+            tgt_list.sort(key=lambda x: x[0], reverse=True)
+            normalized[source_col] = [t for _, t in tgt_list]
 
     return normalized
 
@@ -105,6 +125,10 @@ def run_single_benchmark_task(dataset_name: str,
                               matching_algorithm: str,
                               algorithm_params: dict[str, object]):
 
+    print('-----------------------------------------------------------------------------------')
+    print(f"Running benchmark for dataset: {dataset_name} with algorithm: {matching_algorithm}")
+    print('-----------------------------------------------------------------------------------')
+    
     if matching_algorithm == 'EmbDI':   # EmbDI is not integrated to the system yet
         return
 
@@ -136,11 +160,30 @@ def run_single_benchmark_task(dataset_name: str,
     metric_fns = [getattr(valentine_metric_functions, met) for met in VALENTINE_METRICS_TO_COMPUTE['names']]
     final_metrics = dict()
 
-    valentine_matches = {(('source', match['source']['clm_nm']),
-                          ('target', match['target']['clm_nm'])): match['sim'] for match in matches}
+    valentine_matches = {}
+    valentine_matches_tests = {}
+    for match in matches:
+        key = (('source', match['source']['clm_nm']), ('target', match['target']['clm_nm']))
+        sim = match['sim']
+        test = match.get('test')
+
+        # Keep best similarity for metrics (p-value ranking, same behavior as before)
+        if key not in valentine_matches or sim > valentine_matches[key]:
+            valentine_matches[key] = sim
+
+        # Keep all test-specific values for normalized GoodnessOfFit output
+        if test:
+            if key not in valentine_matches_tests:
+                valentine_matches_tests[key] = {}
+            valentine_matches_tests[key][test] = sim
+
     valentine_matches = dict(sorted(valentine_matches.items(), key=lambda item: item[1], reverse=True))
 
-    normalized_valentine_matches = create_normalized_valentine_matches(valentine_matches)
+    normalized_valentine_matches = {}
+    if matching_algorithm in ['GoodnessOfFit']:
+        normalized_valentine_matches = create_normalized_valentine_matches(valentine_matches_tests)
+    else:
+        normalized_valentine_matches = create_normalized_valentine_matches(valentine_matches)
 
     for metric in metric_fns:
         if metric.__name__ != "precision_at_n_percent":
