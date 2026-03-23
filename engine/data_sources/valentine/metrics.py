@@ -98,6 +98,316 @@ def recall(matches: dict, golden_standard: GoldenStandardLoader, one_to_one=Fals
     return tp / (tp + fn)
 
 
+def persistent_acc(normalized_matches: dict,
+                   golden_standard: GoldenStandardLoader,
+                   top: int = 10,
+                   sig_thresh: float = 0.95,
+                   source_columns: list[str] = None,
+                   target_columns: list[str] = None):
+    """
+    Calculate persistent accuracy for GoodnessOfFit normalized matches.
+
+    Parameters
+    ----------
+    normalized_matches : dict
+        Normalized matches dict: {col1: {col2: {'KS': pval, 'AD': pval, ...}}}
+    golden_standard : GoldenStandardLoader
+        The golden standard loader
+    top : int
+        Number of top matches to consider
+    sig_thresh : float
+        Significance threshold for p-values
+
+    Returns
+    -------
+    dict
+        {'ks': accuracy, 'ad': accuracy, 'chi': -1, 'g': -1}
+    """
+    source_set = set(source_columns) if source_columns is not None else set(normalized_matches.keys())
+    if target_columns is not None:
+        target_set = set(target_columns)
+    else:
+        target_set = set()
+        for matches_dict in normalized_matches.values():
+            target_set.update(matches_dict.keys())
+
+    # Persistent columns: present in both source and target
+    persistent_cols = source_set.intersection(target_set)
+
+    continuous_count = 0
+    discrete_count = 0
+    total_count = 0
+    ks_acc = 0
+    ad_acc = 0
+    chi_acc = 0
+    g_acc = 0
+    total_persistent_acc = 0
+
+    for col1 in persistent_cols:
+        matches_dict = normalized_matches.get(col1, {})
+        if len(matches_dict) == 0:
+            continue
+
+        tests_performed = set()
+        for tests in matches_dict.values():
+            tests_performed.update(tests.keys())
+
+        has_cont = 'KS' in tests_performed or 'AD' in tests_performed
+        has_disc = 'CHISQ' in tests_performed or 'G' in tests_performed
+        if has_cont:
+            continuous_count += 1
+        if has_disc:
+            discrete_count += 1
+
+        # Keep only comparisons above threshold and then top values by max p-value among tests.
+        filtered_candidates = []
+        for col2, tests in matches_dict.items():
+            valid_tests = {t: p for t, p in tests.items() if p >= sig_thresh}
+            if len(valid_tests) == 0:
+                continue
+            filtered_candidates.append((col2, valid_tests, max(valid_tests.values())))
+
+        filtered_candidates.sort(key=lambda x: x[2], reverse=True)
+        top_candidates = filtered_candidates[:int(top)]
+
+        # Correct persistent pair is col1 -> col1
+        for col2, tests, _ in top_candidates:
+            if col2 == col1:
+                if 'KS' in tests:
+                    ks_acc += 1
+                if 'AD' in tests:
+                    ad_acc += 1
+                if 'CHISQ' in tests:
+                    chi_acc += 1
+                if 'G' in tests:
+                    g_acc += 1
+                break
+
+    total_count = continuous_count + discrete_count
+    if total_count > 0:
+        total_persistent_acc = (ks_acc + ad_acc + chi_acc + g_acc) / total_count
+    else:
+        total_persistent_acc = -1
+
+    if continuous_count > 0:
+        ks_acc = ks_acc / continuous_count
+        ad_acc = ad_acc / continuous_count
+    else:
+        ks_acc = -1
+        ad_acc = -1
+
+    if discrete_count > 0:
+        chi_acc = chi_acc / discrete_count
+        g_acc = g_acc / discrete_count
+    else:
+        chi_acc = -1
+        g_acc = -1
+
+    return {'ks': ks_acc, 'ad': ad_acc, 'chi': chi_acc, 'g': g_acc, 'total_acc': total_persistent_acc}
+
+
+def new_acc(normalized_matches: dict,
+            golden_standard: GoldenStandardLoader,
+            sig_thresh: float = 0.95,
+            source_columns: list[str] = None,
+            target_columns: list[str] = None):
+    """
+    Calculate new accuracy for GoodnessOfFit normalized matches.
+
+    Parameters
+    ----------
+    normalized_matches : dict
+        Normalized matches dict: {col1: {col2: {'KS': pval, 'AD': pval, ...}}}
+    golden_standard : GoldenStandardLoader
+        The golden standard loader
+    sig_thresh : float
+        Significance threshold for p-values
+
+    Returns
+    -------
+    dict
+        {'ks': accuracy, 'ad': accuracy, 'chi': -1, 'g': -1}
+    """
+    source_set = set(source_columns) if source_columns is not None else set(normalized_matches.keys())
+    if target_columns is not None:
+        target_set = set(target_columns)
+    else:
+        target_set = set()
+        for matches_dict in normalized_matches.values():
+            target_set.update(matches_dict.keys())
+
+    # New columns: only in target
+    new_cols = target_set - source_set
+
+    print(f'--------------------------------------------------')
+    print(f"New columns: {new_cols}")
+    print(f'Normalized matches items: {normalized_matches.items()}')
+
+    continuous_count = 0
+    discrete_count = 0
+    total_count = 0
+    ks_acc = 0
+    ad_acc = 0
+    chi_acc = 0
+    g_acc = 0
+    total_new_acc = 0
+
+    for col in new_cols:
+        # Gather all comparisons where this target column appears
+        tests_performed = set()
+        per_test_has_sig = {}
+
+        for _, matches_dict in normalized_matches.items():
+            if col not in matches_dict:
+                continue
+            tests = matches_dict[col]
+            for test_name, p_value in tests.items():
+                tests_performed.add(test_name)
+                if test_name not in per_test_has_sig:
+                    per_test_has_sig[test_name] = False
+                if p_value >= sig_thresh:
+                    per_test_has_sig[test_name] = True
+
+        has_cont = 'KS' in tests_performed or 'AD' in tests_performed
+        has_disc = 'CHISQ' in tests_performed or 'G' in tests_performed
+        if has_cont:
+            continuous_count += 1
+        if has_disc:
+            discrete_count += 1
+
+        # Accuracy for new columns: correct when no significant equivalent exists
+        if 'KS' in tests_performed and not per_test_has_sig.get('KS', False):
+            ks_acc += 1
+        if 'AD' in tests_performed and not per_test_has_sig.get('AD', False):
+            ad_acc += 1
+        if 'CHISQ' in tests_performed and not per_test_has_sig.get('CHISQ', False):
+            chi_acc += 1
+        if 'G' in tests_performed and not per_test_has_sig.get('G', False):
+            g_acc += 1
+
+    total_count = continuous_count + discrete_count
+    if total_count > 0:
+        total_new_acc = (ks_acc + ad_acc + chi_acc + g_acc) / total_count
+    else:
+        total_new_acc = -1
+
+    if continuous_count > 0:
+        ks_acc = ks_acc / continuous_count
+        ad_acc = ad_acc / continuous_count
+    else:
+        ks_acc = -1
+        ad_acc = -1
+
+    if discrete_count > 0:
+        chi_acc = chi_acc / discrete_count
+        g_acc = g_acc / discrete_count
+    else:
+        chi_acc = -1
+        g_acc = -1
+
+    return {'ks': ks_acc, 'ad': ad_acc, 'chi': chi_acc, 'g': g_acc, 'total_acc': total_new_acc}
+
+
+def missing_acc(normalized_matches: dict,
+                golden_standard: GoldenStandardLoader,
+                sig_thresh: float = 0.95,
+                source_columns: list[str] = None,
+                target_columns: list[str] = None):
+    """
+    Calculate missing accuracy for GoodnessOfFit normalized matches.
+
+    Parameters
+    ----------
+    normalized_matches : dict
+        Normalized matches dict: {col1: {col2: {'KS': pval, 'AD': pval, ...}}}
+    golden_standard : GoldenStandardLoader
+        The golden standard loader
+    sig_thresh : float
+        Significance threshold for p-values
+
+    Returns
+    -------
+    dict
+        {'ks': accuracy, 'ad': accuracy, 'chi': -1, 'g': -1}
+    """
+    source_set = set(source_columns) if source_columns is not None else set(normalized_matches.keys())
+    if target_columns is not None:
+        target_set = set(target_columns)
+    else:
+        target_set = set()
+        for matches_dict in normalized_matches.values():
+            target_set.update(matches_dict.keys())
+
+    # Missing columns: only in source
+    missing_cols = source_set - target_set
+
+    print(f'--------------------------------------------------')
+    print(f"Missing columns: {missing_cols}")
+    print(f'--------------------------------------------------')
+
+    continuous_count = 0
+    discrete_count = 0
+    total_count = 0
+    ks_acc = 0
+    ad_acc = 0
+    chi_acc = 0
+    g_acc = 0
+    total_missing_acc = 0
+
+    for col in missing_cols:
+        matches_dict = normalized_matches.get(col, {})
+
+        tests_performed = set()
+        per_test_has_sig = {}
+
+        for _, tests in matches_dict.items():
+            for test_name, p_value in tests.items():
+                tests_performed.add(test_name)
+                if test_name not in per_test_has_sig:
+                    per_test_has_sig[test_name] = False
+                if p_value >= sig_thresh:
+                    per_test_has_sig[test_name] = True
+
+        has_cont = 'KS' in tests_performed or 'AD' in tests_performed
+        has_disc = 'CHISQ' in tests_performed or 'G' in tests_performed
+        if has_cont:
+            continuous_count += 1
+        if has_disc:
+            discrete_count += 1
+
+        # Accuracy for missing columns: correct when no significant equivalent exists
+        if 'KS' in tests_performed and not per_test_has_sig.get('KS', False):
+            ks_acc += 1
+        if 'AD' in tests_performed and not per_test_has_sig.get('AD', False):
+            ad_acc += 1
+        if 'CHISQ' in tests_performed and not per_test_has_sig.get('CHISQ', False):
+            chi_acc += 1
+        if 'G' in tests_performed and not per_test_has_sig.get('G', False):
+            g_acc += 1
+
+    total_count = continuous_count + discrete_count
+    if total_count > 0:
+        total_missing_acc = (ks_acc + ad_acc + chi_acc + g_acc) / total_count
+    else:
+        total_missing_acc = -1
+
+    if continuous_count > 0:
+        ks_acc = ks_acc / continuous_count
+        ad_acc = ad_acc / continuous_count
+    else:
+        ks_acc = -1
+        ad_acc = -1
+
+    if discrete_count > 0:
+        chi_acc = chi_acc / discrete_count
+        g_acc = g_acc / discrete_count
+    else:
+        chi_acc = -1
+        g_acc = -1
+
+    return {'ks': ks_acc, 'ad': ad_acc, 'chi': chi_acc, 'g': g_acc, 'total_acc': total_missing_acc}
+
+
 def precision(matches: dict, golden_standard: GoldenStandardLoader, one_to_one=False):
     """
     Function that calculates the precision of the matches against the golden standard. If one_to_one is set to true, it

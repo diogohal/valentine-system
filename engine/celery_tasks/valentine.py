@@ -62,6 +62,27 @@ def create_normalized_valentine_matches(valentine_matches: dict) -> dict:
     return normalized
 
 
+def classify_columns_as_numeric_or_categorical(source_table: ValentineTable,
+                                               target_table: ValentineTable,
+                                               delimiter: int = 127) -> dict[str, dict[str, str]]:
+    """Classify table columns as numerica or categorica based on unique values threshold."""
+    source_column_types: dict[str, str] = {}
+    target_column_types: dict[str, str] = {}
+
+    for col in source_table.get_columns():
+        unique_values = len(set(col.data)) if col.data else 0
+        source_column_types[col.name] = 'categorica' if unique_values <= delimiter else 'numerica'
+
+    for col in target_table.get_columns():
+        unique_values = len(set(col.data)) if col.data else 0
+        target_column_types[col.name] = 'categorica' if unique_values <= delimiter else 'numerica'
+
+    return {
+        'source': source_column_types,
+        'target': target_column_types
+    }
+
+
 @celery.task
 def create_fabricated_data(file_name: str,
                            json_schema: dict,
@@ -145,6 +166,12 @@ def run_single_benchmark_task(dataset_name: str,
     target_table: ValentineTable = ValentineTable(minio_client, file_paths.target_data, file_paths.target_schema,
                                                   dataset_name + '_target', dataset_group_name, load_instances=load)
 
+    column_types = classify_columns_as_numeric_or_categorical(source_table, target_table)
+    
+    print('--------------------------------------------------------------------------------')
+    print(f"Column types (validation): {column_types}")
+    print('--------------------------------------------------------------------------------')
+
     time_start_algorithm = default_timer()
 
     matches = matcher.get_matches(source_table, target_table)
@@ -152,6 +179,9 @@ def run_single_benchmark_task(dataset_name: str,
     time_end = default_timer()
 
     run_times = {"total_time": time_end - time_start_load, "algorithm_time": time_end - time_start_algorithm}
+
+    source_columns = [col.name for col in source_table.get_columns()]
+    target_columns = [col.name for col in target_table.get_columns()]
 
     golden_standard = GoldenStandardLoader(get_dict_from_minio_json_file(minio_client,
                                                                          VALENTINE_FABRICATED_MINIO_BUCKET,
@@ -190,6 +220,13 @@ def run_single_benchmark_task(dataset_name: str,
             if metric.__name__ in ['precision', 'recall', 'f1_score'] and matching_algorithm != "Coma":
                 # Do not use the 1-1 match filter on Coma
                 final_metrics[metric.__name__] = metric(valentine_matches, golden_standard, True)
+            elif metric.__name__ in ['persistent_acc', 'new_acc', 'missing_acc'] and matching_algorithm == 'GoodnessOfFit':
+                final_metrics[metric.__name__] = metric(
+                    normalized_valentine_matches,
+                    golden_standard,
+                    source_columns=source_columns,
+                    target_columns=target_columns
+                )
             else:
                 final_metrics[metric.__name__] = metric(valentine_matches, golden_standard)
         else:
