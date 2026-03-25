@@ -69,11 +69,22 @@ def classify_columns_as_numeric_or_categorical(source_table: ValentineTable,
     source_column_types: dict[str, str] = {}
     target_column_types: dict[str, str] = {}
 
+    def is_numeric_column(values) -> bool:
+        try:
+            [float(v) for v in values]
+            return True
+        except (TypeError, ValueError):
+            return False
+
     for col in source_table.get_columns():
+        if not is_numeric_column(col.data):
+            continue
         unique_values = len(set(col.data)) if col.data else 0
         source_column_types[col.name] = 'categorica' if unique_values <= delimiter else 'numerica'
 
     for col in target_table.get_columns():
+        if not is_numeric_column(col.data):
+            continue
         unique_values = len(set(col.data)) if col.data else 0
         target_column_types[col.name] = 'categorica' if unique_values <= delimiter else 'numerica'
 
@@ -165,12 +176,12 @@ def run_single_benchmark_task(dataset_name: str,
                                                   dataset_name + '_source', dataset_group_name, load_instances=load)
     target_table: ValentineTable = ValentineTable(minio_client, file_paths.target_data, file_paths.target_schema,
                                                   dataset_name + '_target', dataset_group_name, load_instances=load)
-
-    column_types = classify_columns_as_numeric_or_categorical(source_table, target_table)
     
-    print('--------------------------------------------------------------------------------')
-    print(f"Column types (validation): {column_types}")
-    print('--------------------------------------------------------------------------------')
+    delimiter = algorithm_params.get('continuous_threshold', 127)
+    column_types = classify_columns_as_numeric_or_categorical(source_table, target_table, delimiter=delimiter)
+    print('------------------------------------------------------------------------------------')
+    print(f'Column types: {column_types}')
+    print('------------------------------------------------------------------------------------')
 
     time_start_algorithm = default_timer()
 
@@ -224,8 +235,7 @@ def run_single_benchmark_task(dataset_name: str,
                 final_metrics[metric.__name__] = metric(
                     normalized_valentine_matches,
                     golden_standard,
-                    source_columns=source_columns,
-                    target_columns=target_columns
+                    column_types=column_types
                 )
             else:
                 final_metrics[metric.__name__] = metric(valentine_matches, golden_standard)

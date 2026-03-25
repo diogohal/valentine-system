@@ -102,8 +102,7 @@ def persistent_acc(normalized_matches: dict,
                    golden_standard: GoldenStandardLoader,
                    top: int = 10,
                    sig_thresh: float = 0.95,
-                   source_columns: list[str] = None,
-                   target_columns: list[str] = None):
+                   column_types: dict[str, dict[str, str]] = None):
     """
     Calculate persistent accuracy for GoodnessOfFit normalized matches.
 
@@ -117,16 +116,19 @@ def persistent_acc(normalized_matches: dict,
         Number of top matches to consider
     sig_thresh : float
         Significance threshold for p-values
+    column_types : dict[str, dict[str, str]]
+        Dictionary with source and target column types
 
     Returns
     -------
     dict
         {'ks': accuracy, 'ad': accuracy, 'chi': -1, 'g': -1}
     """
-    source_set = set(source_columns) if source_columns is not None else set(normalized_matches.keys())
-    if target_columns is not None:
-        target_set = set(target_columns)
+    if column_types is not None:
+        source_set = set(column_types['source'].keys())
+        target_set = set(column_types['target'].keys())
     else:
+        source_set = set(normalized_matches.keys())
         target_set = set()
         for matches_dict in normalized_matches.values():
             target_set.update(matches_dict.keys())
@@ -136,15 +138,20 @@ def persistent_acc(normalized_matches: dict,
 
     continuous_count = 0
     discrete_count = 0
-    total_count = 0
+    total_count = len(persistent_cols)
     ks_acc = 0
     ad_acc = 0
     chi_acc = 0
     g_acc = 0
     total_persistent_acc = 0
 
+    print(f'--------------------------------------------------')
+    print(f"Persistent columns: {persistent_cols}")
+
     for col1 in persistent_cols:
         matches_dict = normalized_matches.get(col1, {})
+        has_correct_match_any_test = False
+
         if len(matches_dict) == 0:
             continue
 
@@ -181,11 +188,15 @@ def persistent_acc(normalized_matches: dict,
                     chi_acc += 1
                 if 'G' in tests:
                     g_acc += 1
+                if len(tests) > 0:
+                    has_correct_match_any_test = True
                 break
 
-    total_count = continuous_count + discrete_count
+        if has_correct_match_any_test:
+            total_persistent_acc += 1
+
     if total_count > 0:
-        total_persistent_acc = (ks_acc + ad_acc + chi_acc + g_acc) / total_count
+        total_persistent_acc = total_persistent_acc / total_count
     else:
         total_persistent_acc = -1
 
@@ -203,14 +214,16 @@ def persistent_acc(normalized_matches: dict,
         chi_acc = -1
         g_acc = -1
 
-    return {'ks': ks_acc, 'ad': ad_acc, 'chi': chi_acc, 'g': g_acc, 'total_acc': total_persistent_acc}
+    result = {'ks': ks_acc, 'ad': ad_acc, 'chi': chi_acc, 'g': g_acc, 'total_acc': total_persistent_acc}
+    print(result)
+    print(f'--------------------------------------------------')
+    return result
 
 
 def new_acc(normalized_matches: dict,
             golden_standard: GoldenStandardLoader,
             sig_thresh: float = 0.95,
-            source_columns: list[str] = None,
-            target_columns: list[str] = None):
+            column_types: dict[str, dict[str, str]] = None):
     """
     Calculate new accuracy for GoodnessOfFit normalized matches.
 
@@ -222,16 +235,19 @@ def new_acc(normalized_matches: dict,
         The golden standard loader
     sig_thresh : float
         Significance threshold for p-values
+    column_types : dict[str, dict[str, str]]
+        Dictionary with source and target column types
 
     Returns
     -------
     dict
         {'ks': accuracy, 'ad': accuracy, 'chi': -1, 'g': -1}
     """
-    source_set = set(source_columns) if source_columns is not None else set(normalized_matches.keys())
-    if target_columns is not None:
-        target_set = set(target_columns)
+    if column_types is not None:
+        source_set = set(column_types['source'].keys())
+        target_set = set(column_types['target'].keys())
     else:
+        source_set = set(normalized_matches.keys())
         target_set = set()
         for matches_dict in normalized_matches.values():
             target_set.update(matches_dict.keys())
@@ -239,55 +255,59 @@ def new_acc(normalized_matches: dict,
     # New columns: only in target
     new_cols = target_set - source_set
 
-    print(f'--------------------------------------------------')
-    print(f"New columns: {new_cols}")
-    print(f'Normalized matches items: {normalized_matches.items()}')
-
     continuous_count = 0
     discrete_count = 0
-    total_count = 0
+    total_count = len(new_cols)
     ks_acc = 0
     ad_acc = 0
     chi_acc = 0
     g_acc = 0
     total_new_acc = 0
 
-    for col in new_cols:
-        # Gather all comparisons where this target column appears
-        tests_performed = set()
-        per_test_has_sig = {}
+    print(f'--------------------------------------------------')
+    print(f"New columns: {new_cols}")
 
-        for _, matches_dict in normalized_matches.items():
-            if col not in matches_dict:
+    for col in new_cols:
+        if column_types is not None:
+            col_type = column_types['target'].get(col)
+        else:
+            col_type = None
+
+        if col_type == 'numerica':
+            continuous_count += 1
+            relevant_tests = ['KS', 'AD']
+        elif col_type == 'categorica':
+            discrete_count += 1
+            relevant_tests = ['CHISQ', 'G']
+
+        per_test_has_sig = {test_name: False for test_name in relevant_tests}
+        has_any_match_for_col = False
+
+        # Iterate over ALL source columns to find any significant match with this new target column
+        for src_matches in normalized_matches.values():
+            if col not in src_matches:
                 continue
-            tests = matches_dict[col]
-            for test_name, p_value in tests.items():
-                tests_performed.add(test_name)
-                if test_name not in per_test_has_sig:
-                    per_test_has_sig[test_name] = False
-                if p_value >= sig_thresh:
+            has_any_match_for_col = True
+            tests = src_matches[col]
+            for test_name in relevant_tests:
+                p_value = tests.get(test_name)
+                if p_value is not None and p_value >= sig_thresh:
                     per_test_has_sig[test_name] = True
 
-        has_cont = 'KS' in tests_performed or 'AD' in tests_performed
-        has_disc = 'CHISQ' in tests_performed or 'G' in tests_performed
-        if has_cont:
-            continuous_count += 1
-        if has_disc:
-            discrete_count += 1
-
-        # Accuracy for new columns: correct when no significant equivalent exists
-        if 'KS' in tests_performed and not per_test_has_sig.get('KS', False):
+        if 'KS' in relevant_tests and not per_test_has_sig['KS']:
             ks_acc += 1
-        if 'AD' in tests_performed and not per_test_has_sig.get('AD', False):
+        if 'AD' in relevant_tests and not per_test_has_sig['AD']:
             ad_acc += 1
-        if 'CHISQ' in tests_performed and not per_test_has_sig.get('CHISQ', False):
+        if 'CHISQ' in relevant_tests and not per_test_has_sig['CHISQ']:
             chi_acc += 1
-        if 'G' in tests_performed and not per_test_has_sig.get('G', False):
+        if 'G' in relevant_tests and not per_test_has_sig['G']:
             g_acc += 1
 
-    total_count = continuous_count + discrete_count
+        if not has_any_match_for_col:
+            total_new_acc += 1
+
     if total_count > 0:
-        total_new_acc = (ks_acc + ad_acc + chi_acc + g_acc) / total_count
+        total_new_acc = total_new_acc / total_count
     else:
         total_new_acc = -1
 
@@ -305,14 +325,16 @@ def new_acc(normalized_matches: dict,
         chi_acc = -1
         g_acc = -1
 
-    return {'ks': ks_acc, 'ad': ad_acc, 'chi': chi_acc, 'g': g_acc, 'total_acc': total_new_acc}
+    result = {'ks': ks_acc, 'ad': ad_acc, 'chi': chi_acc, 'g': g_acc, 'total_acc': total_new_acc}
+    print(result)
+    print(f'--------------------------------------------------')
+    return result
 
 
 def missing_acc(normalized_matches: dict,
                 golden_standard: GoldenStandardLoader,
                 sig_thresh: float = 0.95,
-                source_columns: list[str] = None,
-                target_columns: list[str] = None):
+                column_types: dict[str, dict[str, str]] = None):
     """
     Calculate missing accuracy for GoodnessOfFit normalized matches.
 
@@ -324,16 +346,19 @@ def missing_acc(normalized_matches: dict,
         The golden standard loader
     sig_thresh : float
         Significance threshold for p-values
+    column_types : dict[str, dict[str, str]]
+        Dictionary with source and target column types
 
     Returns
     -------
     dict
         {'ks': accuracy, 'ad': accuracy, 'chi': -1, 'g': -1}
     """
-    source_set = set(source_columns) if source_columns is not None else set(normalized_matches.keys())
-    if target_columns is not None:
-        target_set = set(target_columns)
+    if column_types is not None:
+        source_set = set(column_types['source'].keys())
+        target_set = set(column_types['target'].keys())
     else:
+        source_set = set(normalized_matches.keys())
         target_set = set()
         for matches_dict in normalized_matches.values():
             target_set.update(matches_dict.keys())
@@ -343,51 +368,53 @@ def missing_acc(normalized_matches: dict,
 
     print(f'--------------------------------------------------')
     print(f"Missing columns: {missing_cols}")
-    print(f'--------------------------------------------------')
 
     continuous_count = 0
     discrete_count = 0
-    total_count = 0
+    total_count = len(missing_cols)
     ks_acc = 0
     ad_acc = 0
     chi_acc = 0
     g_acc = 0
     total_missing_acc = 0
-
+    
     for col in missing_cols:
         matches_dict = normalized_matches.get(col, {})
 
-        tests_performed = set()
-        per_test_has_sig = {}
+        if column_types is not None:
+            col_type = column_types['source'].get(col)
+        else:
+            col_type = None
 
-        for _, tests in matches_dict.items():
-            for test_name, p_value in tests.items():
-                tests_performed.add(test_name)
-                if test_name not in per_test_has_sig:
-                    per_test_has_sig[test_name] = False
-                if p_value >= sig_thresh:
+        if col_type == 'numerica':
+            continuous_count += 1
+            relevant_tests = ['KS', 'AD']
+        elif col_type == 'categorica':
+            discrete_count += 1
+            relevant_tests = ['CHISQ', 'G']
+
+        per_test_has_sig = {test_name: False for test_name in relevant_tests}
+
+        for target_col, tests in matches_dict.items():
+            for test_name in relevant_tests:
+                p_value = tests.get(test_name)
+                if p_value is not None and p_value >= sig_thresh:
                     per_test_has_sig[test_name] = True
 
-        has_cont = 'KS' in tests_performed or 'AD' in tests_performed
-        has_disc = 'CHISQ' in tests_performed or 'G' in tests_performed
-        if has_cont:
-            continuous_count += 1
-        if has_disc:
-            discrete_count += 1
-
-        # Accuracy for missing columns: correct when no significant equivalent exists
-        if 'KS' in tests_performed and not per_test_has_sig.get('KS', False):
+        if 'KS' in relevant_tests and not per_test_has_sig['KS']:
             ks_acc += 1
-        if 'AD' in tests_performed and not per_test_has_sig.get('AD', False):
+        if 'AD' in relevant_tests and not per_test_has_sig['AD']:
             ad_acc += 1
-        if 'CHISQ' in tests_performed and not per_test_has_sig.get('CHISQ', False):
+        if 'CHISQ' in relevant_tests and not per_test_has_sig['CHISQ']:
             chi_acc += 1
-        if 'G' in tests_performed and not per_test_has_sig.get('G', False):
+        if 'G' in relevant_tests and not per_test_has_sig['G']:
             g_acc += 1
 
-    total_count = continuous_count + discrete_count
+        if all(not per_test_has_sig[test_name] for test_name in relevant_tests):
+            total_missing_acc += 1
+
     if total_count > 0:
-        total_missing_acc = (ks_acc + ad_acc + chi_acc + g_acc) / total_count
+        total_missing_acc = total_missing_acc / total_count
     else:
         total_missing_acc = -1
 
@@ -405,7 +432,10 @@ def missing_acc(normalized_matches: dict,
         chi_acc = -1
         g_acc = -1
 
-    return {'ks': ks_acc, 'ad': ad_acc, 'chi': chi_acc, 'g': g_acc, 'total_acc': total_missing_acc}
+    result = {'ks': ks_acc, 'ad': ad_acc, 'chi': chi_acc, 'g': g_acc, 'total_acc': total_missing_acc}
+    print(result)
+    print(f'--------------------------------------------------')
+    return result
 
 
 def precision(matches: dict, golden_standard: GoldenStandardLoader, one_to_one=False):
