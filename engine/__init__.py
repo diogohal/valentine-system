@@ -8,7 +8,8 @@ celery = Celery(app.name)
 
 VALENTINE_METRICS_TO_COMPUTE = {
     "names": ["precision", "recall", "f1_score", "precision_at_n_percent", "recall_at_sizeof_ground_truth",
-              "get_spurious_results_at_sizeof_ground_truth", "persistent_acc", "new_acc", "missing_acc"],
+              "get_spurious_results_at_sizeof_ground_truth", "persistent_acc", "new_acc", "missing_acc",
+              "persistent_acc_gof", "new_acc_gof", "missing_acc_gof"],
     "args": {
         "n": [10, 20, 30, 40, 50, 60, 70, 80, 90]
             }

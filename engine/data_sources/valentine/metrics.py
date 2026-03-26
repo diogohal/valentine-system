@@ -4,6 +4,19 @@ from .golden_standard import GoldenStandardLoader
 from .utils import one_to_one_matches
 
 
+def _extract_source_target_column_names(matches: dict) -> tuple[set[str], set[str]]:
+    """Extract source and target column names from valentine matches keys."""
+    source_cols_with_matches = set()
+    target_cols_with_matches = set()
+
+    for key in matches.keys():
+        src, tgt = key
+        source_cols_with_matches.add(src[1])
+        target_cols_with_matches.add(tgt[1])
+
+    return source_cols_with_matches, target_cols_with_matches
+
+
 def get_tp_fn(matches: dict, golden_standard: GoldenStandardLoader, n: int = None):
     """
     Calculate the true positive  and false negative numbers of the given matches
@@ -98,11 +111,97 @@ def recall(matches: dict, golden_standard: GoldenStandardLoader, one_to_one=Fals
     return tp / (tp + fn)
 
 
-def persistent_acc(normalized_matches: dict,
+def persistent_acc(matches: dict,
                    golden_standard: GoldenStandardLoader,
-                   top: int = 10,
-                   sig_thresh: float = 0.95,
-                   column_types: dict[str, dict[str, str]] = None):
+                   source_columns: list[str],
+                   target_columns: list[str]):
+    """Persistent accuracy for non-GoodnessOfFit algorithms using regular matches."""
+    source_set = set(source_columns)
+    target_set = set(target_columns)
+    persistent_cols = source_set.intersection(target_set)
+
+    print(f'--------------------------------------------------')
+    print(f"Persistent columns (non-gof): {persistent_cols}")
+
+    total_count = len(persistent_cols)
+    if total_count == 0:
+        return -1
+
+    correct_count = 0
+    for col in persistent_cols:
+        expected_key = (('source', col), ('target', col))
+        if expected_key in matches:
+            correct_count += 1
+
+    result = correct_count / total_count
+    print(result)
+    print(f'--------------------------------------------------')
+    return result
+
+
+def new_acc(matches: dict,
+            golden_standard: GoldenStandardLoader,
+            source_columns: list[str],
+            target_columns: list[str]):
+    """New-column accuracy for non-GoodnessOfFit algorithms using regular matches."""
+    source_set = set(source_columns)
+    target_set = set(target_columns)
+    new_cols = target_set - source_set
+
+    print(f'--------------------------------------------------')
+    print(f"New columns (non-gof): {new_cols}")
+
+    total_count = len(new_cols)
+    if total_count == 0:
+        return -1
+
+    _, target_cols_with_matches = _extract_source_target_column_names(matches)
+
+    correct_count = 0
+    for col in new_cols:
+        if col not in target_cols_with_matches:
+            correct_count += 1
+
+    result = correct_count / total_count
+    print(result)
+    print(f'--------------------------------------------------')
+    return result
+
+
+def missing_acc(matches: dict,
+                golden_standard: GoldenStandardLoader,
+                source_columns: list[str],
+                target_columns: list[str]):
+    """Missing-column accuracy for non-GoodnessOfFit algorithms using regular matches."""
+    source_set = set(source_columns)
+    target_set = set(target_columns)
+    missing_cols = source_set - target_set
+
+    print(f'--------------------------------------------------')
+    print(f"Missing columns (non-gof): {missing_cols}")
+
+    total_count = len(missing_cols)
+    if total_count == 0:
+        return -1
+
+    source_cols_with_matches, _ = _extract_source_target_column_names(matches)
+
+    correct_count = 0
+    for col in missing_cols:
+        if col not in source_cols_with_matches:
+            correct_count += 1
+
+    result = correct_count / total_count
+    print(result)
+    print(f'--------------------------------------------------')
+    return result
+
+
+def persistent_acc_gof(normalized_matches: dict,
+                       golden_standard: GoldenStandardLoader,
+                       top: int = 10,
+                       sig_thresh: float = 0.95,
+                       column_types: dict[str, dict[str, str]] = None):
     """
     Calculate persistent accuracy for GoodnessOfFit normalized matches.
 
@@ -220,10 +319,10 @@ def persistent_acc(normalized_matches: dict,
     return result
 
 
-def new_acc(normalized_matches: dict,
-            golden_standard: GoldenStandardLoader,
-            sig_thresh: float = 0.95,
-            column_types: dict[str, dict[str, str]] = None):
+def new_acc_gof(normalized_matches: dict,
+                golden_standard: GoldenStandardLoader,
+                sig_thresh: float = 0.95,
+                column_types: dict[str, dict[str, str]] = None):
     """
     Calculate new accuracy for GoodnessOfFit normalized matches.
 
@@ -331,10 +430,10 @@ def new_acc(normalized_matches: dict,
     return result
 
 
-def missing_acc(normalized_matches: dict,
-                golden_standard: GoldenStandardLoader,
-                sig_thresh: float = 0.95,
-                column_types: dict[str, dict[str, str]] = None):
+def missing_acc_gof(normalized_matches: dict,
+                    golden_standard: GoldenStandardLoader,
+                    sig_thresh: float = 0.95,
+                    column_types: dict[str, dict[str, str]] = None):
     """
     Calculate missing accuracy for GoodnessOfFit normalized matches.
 

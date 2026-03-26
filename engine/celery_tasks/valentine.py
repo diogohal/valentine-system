@@ -231,13 +231,21 @@ def run_single_benchmark_task(dataset_name: str,
             if metric.__name__ in ['precision', 'recall', 'f1_score'] and matching_algorithm != "Coma":
                 # Do not use the 1-1 match filter on Coma
                 final_metrics[metric.__name__] = metric(valentine_matches, golden_standard, True)
-            elif metric.__name__ in ['persistent_acc', 'new_acc', 'missing_acc'] and matching_algorithm == 'GoodnessOfFit':
+            elif metric.__name__ in ['persistent_acc_gof', 'new_acc_gof', 'missing_acc_gof'] and matching_algorithm == 'GoodnessOfFit':
                 final_metrics[metric.__name__] = metric(
                     normalized_valentine_matches,
                     golden_standard,
                     column_types=column_types
                 )
-            else:
+            elif metric.__name__ in ['persistent_acc', 'new_acc', 'missing_acc'] and matching_algorithm != 'GoodnessOfFit':
+                final_metrics[metric.__name__] = metric(
+                    valentine_matches,
+                    golden_standard,
+                    source_columns,
+                    target_columns
+                )
+            elif metric.__name__ not in ['persistent_acc', 'new_acc', 'missing_acc',
+                                         'persistent_acc_gof', 'new_acc_gof', 'missing_acc_gof']:
                 final_metrics[metric.__name__] = metric(valentine_matches, golden_standard)
         else:
             for n in VALENTINE_METRICS_TO_COMPUTE['args']['n']:
