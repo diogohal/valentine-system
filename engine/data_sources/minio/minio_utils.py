@@ -94,7 +94,7 @@ def get_column_sample_from_minio_csv_file2(minio_client: Minio, bucket_name: str
                                    sep=get_in_memory_delimiter(data[:16 * 1024]),
                                    on_bad_lines='warn',
                                    encoding_errors='ignore').fillna('')
-    return list(df.columns), list(df.values)
+    return list(df.columns), df.values.tolist()
 
 
 def get_dict_from_minio_json_file(minio_client: Minio, bucket_name: str, object_path: str) -> dict:
