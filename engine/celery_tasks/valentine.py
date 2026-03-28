@@ -99,7 +99,7 @@ def create_fabricated_data(file_name: str,
                            json_schema: dict,
                            dataset_group_name: str,
                            fabrication_variants: tuple[bool, bool, bool, bool],
-                           fabrication_parameters: tuple[list[bool], list[bool], list[bool], list[bool]],
+                           fabrication_parameters: tuple[list[object], list[object], list[object], list[object]],
                            fabrication_pairs: tuple[int, int, int, int]):
 
     df = get_pandas_df_from_minio_csv_file(minio_client, TMP_MINIO_BUCKET, file_name, 1, None)  # the loaded csv file
@@ -111,7 +111,7 @@ def create_fabricated_data(file_name: str,
     if fbr_joinable:
         app.logger.info(f"Fabricating Joinable data for: {file_name}")
         # bool array in the format noisy instances, noisy schemata, verbatim instances and verbatim schemata
-        what_to_fabricate: list[bool] = joinable_specs
+        what_to_fabricate: list[object] = joinable_specs
         pairs: int = joinable_pairs
 
         valentine_fabricator('Joinable', what_to_fabricate, pairs, df, json_schema, dataset_group_name,
@@ -120,7 +120,7 @@ def create_fabricated_data(file_name: str,
     if fbr_unionable:
         app.logger.info(f"Fabricating Unionable data for: {file_name}")
         # bool array in the format noisy instances, noisy schemata, verbatim instances and verbatim schemata
-        what_to_fabricate: list[bool] = unionable_specs
+        what_to_fabricate: list[object] = unionable_specs
         pairs: int = unionable_pairs
 
         valentine_fabricator('Unionable', what_to_fabricate, pairs, df, json_schema, dataset_group_name,
@@ -129,7 +129,7 @@ def create_fabricated_data(file_name: str,
     if fbr_view_unionable:
         app.logger.info(f"Fabricating View Unionable data for: {file_name}")
         # bool array in the format noisy instances, noisy schemata, verbatim instances and verbatim schemata
-        what_to_fabricate: list[bool] = view_unionable_specs
+        what_to_fabricate: list[object] = view_unionable_specs
         pairs: int = view_unionable_pairs
 
         valentine_fabricator('View-Unionablle', what_to_fabricate, pairs, df, json_schema, dataset_group_name,
@@ -138,7 +138,7 @@ def create_fabricated_data(file_name: str,
     if fbr_semantically_joinable:
         app.logger.info(f"Fabricating Semantically Joinable data for: {file_name}")
         # bool array in the format noisy instances, noisy schemata, verbatim instances and verbatim schemata
-        what_to_fabricate: list[bool] = semantically_joinable_specs
+        what_to_fabricate: list[object] = semantically_joinable_specs
         pairs: int = semantically_joinable_pairs
 
         valentine_fabricator('Semantically-Joinable', what_to_fabricate, pairs, df, json_schema, dataset_group_name,

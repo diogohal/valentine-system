@@ -12,7 +12,8 @@ class FabricationMethod extends Component{
         nInstances: true,
         vSchemata: true,
         nSchemata: true,
-        numberOfPairs: 0
+        numberOfPairs: 0,
+        verticalOverlapPercentage: null
     }
 
     componentDidMount() {
@@ -21,6 +22,12 @@ class FabricationMethod extends Component{
         }else if(this.props.methodName==="Semantically Joinable"){
             this.setState({vInstances: false})
         }
+    }
+
+    supportsVerticalOverlap = () => {
+        return this.props.methodName === "Joinable" ||
+            this.props.methodName === "View Unionable" ||
+            this.props.methodName === "Semantically Joinable"
     }
 
     toggleSelected = () => {
@@ -76,6 +83,24 @@ class FabricationMethod extends Component{
         this.setState(updatedState)
     }
 
+    changeVerticalOverlapPercentage = (event) => {
+        const value = parseFloat(event.target.value)
+        const updatedState = {...this.state}
+
+        if (Number.isNaN(value)) {
+            updatedState.verticalOverlapPercentage = null
+        } else if (value < 0) {
+            updatedState.verticalOverlapPercentage = 0
+        } else if (value > 1) {
+            updatedState.verticalOverlapPercentage = 1
+        } else {
+            updatedState.verticalOverlapPercentage = value
+        }
+
+        this.props.sendSelected(updatedState)
+        this.setState(updatedState)
+    }
+
     render() {
 
         const noisyInstancesJoinable = (this.props.methodName === "Joinable") ?
@@ -122,8 +147,21 @@ class FabricationMethod extends Component{
                 </div>
                 <div>
                     <div className={classes.TextField}>
-                        <TextField id={this.props.methodName} label="Number of pairs" onChange={this.changeNumberOfPairs}/>
+                        <TextField id={this.props.methodName} label="Number of pairs" onChange={this.changeNumberOfPairs} fullWidth/>
                     </div>
+                    {this.supportsVerticalOverlap() ?
+                        <div className={classes.TextField}>
+                            <TextField
+                                id={`${this.props.methodName}-vertical-overlap`}
+                                label="Vertical overlap percentage"
+                                type="number"
+                                inputProps={{min: 0, max: 1, step: 0.01}}
+                                value={this.state.verticalOverlapPercentage ?? ''}
+                                onChange={this.changeVerticalOverlapPercentage}
+                                fullWidth
+                            />
+                        </div> : null
+                    }
                     <div className={classes.IncludeHeader}>
                         <h5> Include: </h5>
                     </div>

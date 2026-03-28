@@ -23,6 +23,7 @@
 
 .TextField {
     margin-left: 10px;
+    width: calc(100% - 20px);
 }
 
 .IncludeHeader {

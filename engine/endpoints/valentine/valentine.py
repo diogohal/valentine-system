@@ -33,8 +33,12 @@ def valentine_fabricate_data():
                                                                      uploaded_file.filename)
     fabrication_variants = (form.fabricate_joinable.data, form.fabricate_unionable.data,
                             form.fabricate_view_unionable.data, form.fabricate_semantically_joinable.data)
-    fabrication_parameters = (form.joinable_specs.data, form.unionable_specs.data,
-                              form.view_unionable_specs.data, form.semantically_joinable_specs.data)
+    fabrication_parameters = (
+        [*form.joinable_specs.data, form.joinable_vertical_overlap_percentage.data],
+        [*form.unionable_specs.data, None],
+        [*form.view_unionable_specs.data, form.view_unionable_vertical_overlap_percentage.data],
+        [*form.semantically_joinable_specs.data, form.semantically_joinable_vertical_overlap_percentage.data]
+    )
     fabrication_pairs = (form.joinable_pairs.data, form.unionable_pairs.data,
                          form.view_unionable_pairs.data, form.semantically_joinable_pairs.data)
     create_fabricated_data.s(uploaded_file.filename,

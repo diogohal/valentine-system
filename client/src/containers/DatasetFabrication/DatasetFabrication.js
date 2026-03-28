@@ -82,6 +82,9 @@ class DatasetFabrication extends Component {
             formData.append("joinable_specs-2", vInstances)
             formData.append("joinable_specs-3", vSchemata)
             formData.append("joinable_pairs", this.state.selectedVariants.joinable.numberOfPairs)
+            if (this.state.selectedVariants.joinable.verticalOverlapPercentage != null) {
+                formData.append("joinable_vertical_overlap_percentage", this.state.selectedVariants.joinable.verticalOverlapPercentage)
+            }
         }
         if (this.state.selectedVariants.unionable && this.state.selectedVariants.unionable.selected) {
             if (this.state.selectedVariants.unionable.numberOfPairs === 0) {
@@ -114,6 +117,9 @@ class DatasetFabrication extends Component {
             formData.append("semantically_joinable_specs-2", vInstances)
             formData.append("semantically_joinable_specs-3", vSchemata)
             formData.append("semantically_joinable_pairs", this.state.selectedVariants.semanticallyJoinable.numberOfPairs)
+            if (this.state.selectedVariants.semanticallyJoinable.verticalOverlapPercentage != null) {
+                formData.append("semantically_joinable_vertical_overlap_percentage", this.state.selectedVariants.semanticallyJoinable.verticalOverlapPercentage)
+            }
         }
         if (this.state.selectedVariants.viewUnionable && this.state.selectedVariants.viewUnionable.selected) {
             if (this.state.selectedVariants.viewUnionable.numberOfPairs === 0) {
@@ -130,6 +136,9 @@ class DatasetFabrication extends Component {
             formData.append("view_unionable_specs-2", vInstances)
             formData.append("view_unionable_specs-3", vSchemata)
             formData.append("view_unionable_pairs", this.state.selectedVariants.viewUnionable.numberOfPairs)
+            if (this.state.selectedVariants.viewUnionable.verticalOverlapPercentage != null) {
+                formData.append("view_unionable_vertical_overlap_percentage", this.state.selectedVariants.viewUnionable.verticalOverlapPercentage)
+            }
         }
         this.setState({loading: true});
         axios.post(process.env.REACT_APP_SERVER_ADDRESS + "/valentine/submit_data_fabrication_job", formData)

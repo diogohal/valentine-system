@@ -187,11 +187,15 @@ def valentine_fabricator(scenario: str, parameters: list[bool], no_pairs: int, i
     approx_prcs = [10, 20, 30]
     columns = [0.3, 0.5, 0.7]
 
-    noisy_instances, noisy_schemata, verbatim_instances, verbatim_schemata = parameters
+    noisy_instances, noisy_schemata, verbatim_instances, verbatim_schemata, vertical_overlap_percentage = parameters
+    
+    print(f'Vertical overlap percentage: {vertical_overlap_percentage}')
+    if vertical_overlap_percentage is not None:
+        columns = [vertical_overlap_percentage]
 
     if scenario == 'Joinable':
-
-        columns = [0.0, 0.3, 0.5, 0.7]
+        if vertical_overlap_percentage is None:
+            columns = [0.0, 0.3, 0.5, 0.7]
 
         pairs_ver = no_pairs // 2
         pairs_both = no_pairs - pairs_ver
@@ -248,7 +252,8 @@ def valentine_fabricator(scenario: str, parameters: list[bool], no_pairs: int, i
 
     elif scenario == 'Semantically-Joinable':
 
-        columns = [0.0, 0.3, 0.5, 0.7]
+        if vertical_overlap_percentage is None:
+            columns = [0.0, 0.3, 0.5, 0.7]
 
         pairs_ver = no_pairs // 2
         pairs_both = no_pairs - pairs_ver
